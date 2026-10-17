@@ -1,0 +1,22 @@
+[Unit]
+Description=Fitbox supported BLE scale listener
+After=bluetooth.target network-online.target
+Wants=bluetooth.target
+
+[Service]
+User=__USER__
+Environment=HOME=__HOME__
+Environment=FITBOX_CONFIG=__HOME__/.config/fitbox/config.env
+EnvironmentFile=__HOME__/.config/fitbox/config.env
+WorkingDirectory=__PROJECT__
+ExecStart=__PYTHON__ __PROJECT__/fitbox/scale_daemon.py
+Restart=on-failure
+RestartSec=30
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=__HOME__/fitdata
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

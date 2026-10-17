@@ -1,0 +1,13 @@
+[Unit]
+Description=Fitbox morning collection and evening retry
+
+[Timer]
+OnCalendar=*-*-* 07:30:00
+OnCalendar=*-*-* 21:30:00
+OnCalendar=Sat,Sun *-*-* 08:00:00
+OnCalendar=Sat,Sun *-*-* 09:00:00
+Persistent=true
+RandomizedDelaySec=180
+
+[Install]
+WantedBy=timers.target

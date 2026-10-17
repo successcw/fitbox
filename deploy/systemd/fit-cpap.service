@@ -1,0 +1,17 @@
+[Unit]
+Description=Fitbox ezShare CPAP collection
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=__USER__
+Environment=HOME=__HOME__
+Environment=FITBOX_CONFIG=__HOME__/.config/fitbox/config.env
+EnvironmentFile=__HOME__/.config/fitbox/config.env
+WorkingDirectory=__PROJECT__
+ExecStart=__PYTHON__ __PROJECT__/fitbox/cpap_pull.py --dest __HOME__/fitdata/cpap --journal __HOME__/fitdata/cpap.jsonl --net auto --legacy-scan --days 2 --verify --if-missing
+Nice=10
+TimeoutStartSec=20min
+# nm 模式会调用 sudo 建立独立网络恢复计时器，不能设置为 true。
+NoNewPrivileges=false

@@ -1,0 +1,3 @@
+# Python 3.12+; use an isolated virtual environment.
+Pillow>=10,<13
+bleak>=0.22,<3
