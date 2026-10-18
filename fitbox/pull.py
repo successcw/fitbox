@@ -2,8 +2,8 @@
 """Mac side: pull new weigh-ins from fitbox, append them to the rehab log and push a notification.
 
 Safe to run often: records already ingested (by timestamp) are skipped.
-Every notification goes through notify.py — this module never talks to Telegram, and never
-touches a proxy: 出网交给系统层（Clash TUN）。
+Every notification goes through notify.py — this module never talks to Telegram and never
+configures a proxy; routing is left to the system network stack.
 """
 import json, subprocess, sys
 from pathlib import Path

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Receive Health Auto Export (iOS) REST pushes and store them on fitbox.
 
-Reachable only over Tailscale (ufw allows the port on tailscale0 only) and every request must carry
-the shared token in the X-Fit-Token header. Each push is saved verbatim; an index line is appended to
+The bind address and firewall are deployment responsibilities: default to loopback and expose it
+only on a private network such as Tailscale. Every request must carry the shared token in the
+X-Fit-Token header. Each push is saved verbatim; an index line is appended to
 ~/fitdata/health.jsonl so the Mac watcher can pick it up the same way it does weigh-ins.
 """
 import hmac, json, logging, os

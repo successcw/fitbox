@@ -7,7 +7,7 @@ ezShare 卡没有官方 API，社区反向工程出来的只有三个端点：
     GET /dir?dir=A:<path>           HTML 目录列表（得自己解析）
     GET /download?file=<path>       原始文件（支持 Range）
 
-根目录写作 ``A:``，子目录写作 ``A:DATALOG``、``A:DATALOG\\20261011``。
+根目录写作 ``A:``，子目录写作 ``A:DATALOG``、``A:DATALOG\\20250101``。
 
 因为是解析 HTML，不同固件的排版可能不一样 —— 第一次接卡先跑 ``--probe``，
 把卡的原始响应打出来核对（用法见 docs/deployment.md）。
@@ -17,7 +17,7 @@ ezShare 卡没有官方 API，社区反向工程出来的只有三个端点：
     cpap_pull.py --probe                         # 首次：打印原始响应 + 解析结果
     cpap_pull.py --list                          # 只看卡上有什么，不下载
     cpap_pull.py --dest ~/fitdata/cpap --net nm  # 切热点 → 拉新数据 → 切回来
-    cpap_pull.py --dest ~/fitdata/cpap --dry-run --since 20261012
+    cpap_pull.py --dest ~/fitdata/cpap --dry-run --since 20250102
     cpap_pull.py --dest ~/fitdata/cpap --if-missing   # 今天已完整取得最近夜间数据就直接退出（重试档用）
 
 定时（fit-cpap.timer）：每天 07:30，21:30 补漏；周六周日再加 08:00、09:00 两档重试，重试档带
@@ -43,8 +43,8 @@ Entry = collections.namedtuple('Entry', 'name is_dir size rel')
 IGNORE = re.compile(r'^(\.|System Volume Information$|ezshare\.(cfg|ini)$|FOUND\.000$)', re.I)
 
 # 目录页里的条目行，形态来自多个开源反向工程实现：
-#   2026-10-11 22:54:40 1KB 20261011_225440_CSL.edf
-#   2026-10-11 22:54:40 1KB 20261011_225440_CSL.crc
+#   2025-01-01 22:54:40 1KB 20250101_225440_CSL.edf
+#   2025-01-01 22:54:40 1KB 20250101_225440_CSL.crc
 LINE = re.compile(
     r'^(?:(?P<date>\d{4}\s*-\s*\d{1,2}\s*-\s*\d{1,2})\s+(?P<time>\d{1,2}:\d{2}(?::\d{2})?)\s+)?'
     r'(?P<size>\d+)\s*(?P<unit>KB|MB|B)\b\s*(?P<name>\S.*?)\s*$', re.I)
@@ -82,7 +82,7 @@ def _pre_lines(html):
     """把目录页剥成纯文本行：去标签、还原实体。
 
     标签是**直接删掉**而不是换成换行 —— ezShare 那一行的形态是
-    ``2026-10-11 22:54:40 1KB <a href=...>20261011_225440_PLD.edf</a>``，
+    ``2025-01-01 22:54:40 1KB <a href=...>20250101_225440_PLD.edf</a>``，
     元数据和文件名之间只隔着一个 <a>，换成换行就会把大小和名字拆成两行、大小就丢了。
     """
     m = re.search(r'<pre[^>]*>(.*?)</pre>', html, re.I | re.S)
@@ -101,8 +101,8 @@ def _basename(path):
 def _rel_of(remote_dir, name):
     """卡上的路径 → 本地相对路径（统一用 /）。
 
-    ``A:`` → ``STR.edf``；``A:DATALOG`` → ``DATALOG/20261011``。
-    注意 download?file= 用的是**不带 A: 前缀**的相对路径（STR.EDF、DATALOG\\20261011\\x.edf），
+    ``A:`` → ``STR.edf``；``A:DATALOG`` → ``DATALOG/20250101``。
+    注意 download?file= 用的是**不带 A: 前缀**的相对路径（STR.EDF、DATALOG\\20250101\\x.edf），
     而 dir?dir= 才带前缀，两者不能混用。
     """
     d = remote_dir[2:] if remote_dir.upper().startswith('A:') else remote_dir
@@ -164,7 +164,7 @@ def listdir(remote_dir, base=BASE):
 
 
 def join_remote(remote_dir, name):
-    """拼子目录的 dir= 参数：A: + DATALOG → ``A:DATALOG``，再往下才是 ``A:DATALOG\\20261011``。"""
+    """拼子目录的 dir= 参数：A: + DATALOG → ``A:DATALOG``，再往下才是 ``A:DATALOG\\20250101``。"""
     return ('A:' + name) if remote_dir.upper() in ('A:', 'A:\\', 'A:/') else remote_dir.rstrip('\\/') + '\\' + name
 
 

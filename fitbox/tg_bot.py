@@ -5,9 +5,9 @@ Runs as a thread inside watch.py and long-polls getUpdates, so a message sent wh
 was asleep is not lost: the offset is persisted and the backlog is drained on reconnect.
 Every message becomes one line in 数据/fitbox/tg_inbox.jsonl:
 
-    {"update_id": 123, "ts": "...", "date": "2026-10-14", "time": "08:22",
+    {"update_id": 123, "ts": "...", "date": "2025-01-01", "time": "08:22",
      "kind": "voice"|"text"|"photo", "seconds": 12,
-     "file": "数据/fitbox/tg_media/20261014-082200.oga", "text": "<转写原文/消息正文>"}
+     "file": "数据/fitbox/tg_media/20250101-082200.oga", "text": "<转写原文/消息正文>"}
 
 Explicit completed exercise messages are recorded automatically. Other messages stay
 queued for a session to review and mark done:  python3 tg_bot.py pending    列出待整理

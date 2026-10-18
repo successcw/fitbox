@@ -6,9 +6,9 @@ Credentials live outside the repo, in ~/.config/fitbox/config.env (mode 600):
     TELEGRAM_BOT_TOKEN=<your-bot-token>
     TELEGRAM_CHAT_ID=<your-chat-id>
 
-No proxy here. 网络出口由系统层负责（Clash TUN 模式），代码里不再有任何代理地址、
-不做线路切换：一次请求，成或不成。opener 显式清空代理链，为的是让任何残留的
-HTTP_PROXY / HTTPS_PROXY 环境变量都无法把请求劫到别处。
+No proxy is configured here: routing belongs to the system network stack. The opener
+explicitly clears the proxy chain so a leftover HTTP_PROXY / HTTPS_PROXY variable cannot
+silently redirect the request. One attempt per call; success or failure is reported.
 
 Nothing else in the pipeline knows how a message reaches the phone. Every public
 function returns True/False and never raises — a failed push must never lose the record.
