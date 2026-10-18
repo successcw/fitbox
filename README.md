@@ -22,7 +22,8 @@
 
 仓库根目录的 [AGENTS.md](AGENTS.md) 是写给 AI agent 的部署契约：分阶段命令、验证门、故障决策树和禁止事项。把下面这段和仓库地址一起发给你的 AI：
 
-> 请阅读 <https://github.com/successcw/fitbox/blob/main/AGENTS.md>，按阶段为我部署 fitbox。先只做信息收集和只读预检，把需要我提供的内容列出来；我确认后再继续。不要向我索要 token 明文，不要修改呼吸机治疗参数，不要格式化 SD 卡，不要把 8787 端口暴露到公网，也不要在未验证时声称部署成功。
+> 请阅读 https://github.com/successcw/fitbox/blob/main/AGENTS.md
+> 按阶段为我部署 fitbox。先只做信息收集和只读预检，把需要我提供的内容列出来；我确认后再继续。不要向我索要 token 明文，不要修改呼吸机治疗参数，不要格式化 SD 卡，不要把 8787 端口暴露到公网，也不要在未验证时声称部署成功。
 
 AI 可以完成代码安装、配置检查、服务部署和验证；但硬件接线、iPhone 上的 Health Auto Export、Telegram/Tailscale 账号和 sudo 授权必须由你完成。缺少这些条件时，它应当停下并说明缺什么，而不是猜一个结果。
 
