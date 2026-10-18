@@ -145,22 +145,24 @@ def html(daily, today, verdict, flags, weight, ex):
     t_sleep = t_sleep + '分' if t_sleep and t_sleep != '持平' else t_sleep
     t_rhr, c_rhr = vs(rhr, a_rhr, True)
     t_hrv, c_hrv = vs(hrv, a_hrv, False)
+    hrv_meta = d.get('_sample_metrics', {}).get('heart_rate_variability')
+    hrv_ref = (f"{hrv_meta['count']} 次采样均值 · " if hrv_meta and hrv_meta.get('count') else '') + (f'7 天均 {a_hrv:.0f}' if a_hrv else '')
     body = weight[2] if weight and len(weight) > 2 else None
     tr = ex['trend']
     fat_wk = tr.get('fat_wk')
     tiles = ''.join([
         tile('#4cc9f0', '睡眠', hm_(tot).replace('小时', '<small>小时</small>').replace('分', '<small>分</small>'), '', f'7 天均 {hm_(avg_tot)}' if avg_tot else '', t_sleep, c_sleep),
         tile('#f2667a', '静息心率', f'{rhr:.0f}' if rhr else '—', '次/分', f'{rhr_src}7 天均 {a_rhr:.0f}' if a_rhr else rhr_src, t_rhr, c_rhr),
-        tile('#4ade80', '心率变异性', f'{hrv:.0f}' if hrv else '—', 'ms', f'7 天均 {a_hrv:.0f}' if a_hrv else '', t_hrv, c_hrv),
+        tile('#4ade80', '心率变异性', f'{hrv:.0f}' if hrv else '—', 'ms', hrv_ref, t_hrv, c_hrv),
         tile('#f2c14e', '今早体重', f'{weight[1]:.2f}' if weight else '—', 'kg', f'{weight[0]} 自动称' if weight else '还没称', ''),
-        tile('#f59e42', '昨日总消耗', f'{ex["total"]:.0f}' if ex['total'] else '—', '千卡', f'活动 {ex["act"]:.0f} · 基础 {ex["bas"]:.0f}', ''),
-        tile('#4cc9f0', '昨日锻炼', f'{ex["ex_min"]:.0f}' if ex['ex_min'] else '—', '分钟', f'{ex["steps"]:.0f} 步' if ex['steps'] else '', ''),
+        tile('#f59e42', '昨日' + ex.get('energy_label', '总消耗'), f'{ex["total"]:.0f}' if ex['total'] is not None else '—', '千卡', ' · '.join(f'{label} {value:.0f}' if value is not None else f'{label} 未同步' for label, value in [('活动', ex['act']), ('基础', ex['bas'])]), ''),
+        tile('#4cc9f0', '手表锻炼', f'{ex["ex_min"]:.0f}' if ex['ex_min'] is not None else '—', '分钟', f'{ex["steps"]:.0f} 步' if ex['steps'] is not None else '', ''),
         tile('#b48cf2', '体脂率', f'{body["fat_pct"]}' if body else '—', '%', f'脂肪 {body["fat_kg"]} kg' if body else '', ''),
         tile('#4ade80', '肌肉量', f'{body["muscle_kg"]}' if body else '—', 'kg', '开源算法估算' if body else '', ''),
     ])
     bar = ''.join(f'<div style="flex:{s.get(k, 0)};background:{c}"></div>' for k, _, c, _, _ in STAGES)
     bar += f'<div style="flex:{s.get("awake", 0)};background:#f59e42"></div>'
-    rows = ''
+    rows = '<div class="note">睡眠时长由已同步的逐段记录汇总，后续同步可能补齐。</div>' if s.get('origin') == 'segments' else ''
     for k, name, c, (lo, hi), mean in STAGES:
         hrs = s.get(k, 0); pct = hrs / tot * 100
         rows += (f'<div class="sig"><i class="dot" style="background:{c}"></i><div class="sn"><b>{name}</b><em>{mean}</em></div>'
@@ -188,6 +190,8 @@ def html(daily, today, verdict, flags, weight, ex):
     tr_chips = ''.join(f'<span class="tag">{x}</span>' for x in ex['train'])
     train_html = (wo or '<div class="note" style="margin:0 0 6px">手表昨天没有记录到专门的运动</div>') + \
                  (f'<div class="tags">{tr_chips}</div>' if tr_chips else '<div class="note">昨天没有训练记录</div>')
+    if ex.get('activity_partial'):
+        train_html += '<div class="note">活动指标仅统计已同步明细，未确认全天覆盖。</div>'
     # 吃
     if ex['meals']:
         food_html = ''.join(f'<div class="sig"><i class="dot" style="background:#4ade80"></i><div class="sn"><b>{t}</b><em>{f}</em></div></div>' for t, f in ex['meals'])
@@ -248,7 +252,7 @@ body{{width:760px;max-width:880px;margin:0 auto;background:#0b1522;color:#e6edf5
 <div class="panel"><div class="pt"><h2>趋势</h2><span>Fat-loss Track · 近 2 周早晨体重</span></div>{weight_svg(tr['points'])}
 <div class="trend">{trend_line}</div><div class="note">只看早上的体重；每公斤脂肪约 7700 千卡，用体重走势反推热量缺口，比拍照估热量准。</div></div>
 <div class="panel"><div class="pt"><h2>睡</h2><span>Sleep · {s['sleepStart'][11:16]} 入睡 → {s['sleepEnd'][11:16]} 醒来</span></div><div class="note">以下是整晚阶段时长占比，不是分期时间轴。</div><div class="bar">{bar}</div>{rows}{cp_html}</div>
-<div class="panel"><div class="pt"><h2>练</h2><span>Move · 昨天 · 总消耗 {ex['total']:.0f} 千卡</span></div>{train_html}</div>
+<div class="panel"><div class="pt"><h2>练</h2><span>Move · 昨天 · {ex.get('energy_label', '总消耗')} {ex.get('energy_text', '未同步')}</span></div>{train_html}</div>
 <div class="panel"><div class="pt"><h2>吃</h2><span>Eat · 昨天</span>{rule}</div>{food_html}</div>
 <div class="panel"><div class="pt"><h2>今日灯号</h2><span>Today's Call</span></div>
 <div class="light"><div class="bulb"></div><div><b>{verdict}</b></div></div></div>

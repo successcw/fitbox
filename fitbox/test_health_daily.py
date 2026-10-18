@@ -42,6 +42,18 @@ class MorningReportTests(unittest.TestCase):
     def report(self, **kwargs):
         return daily.morning_report(self.today, wait_cpap=False, **kwargs)
 
+    def test_training_change_updates_sent_report_once(self):
+        self.cp = {'min': 407}
+        built = ('日报', '正常', self.sleep, {'cpap': self.cp, 'train': []})
+        with patch.object(daily, 'build', return_value=built), patch.object(daily, 'log_rows', return_value=[]) as rows:
+            self.assertTrue(self.report())
+            self.assertFalse(self.report())
+            built[3]['train'] = ['篮球90分钟']
+            rows.return_value = [{'date':'2026-10-16', 'source':'telegram', 'done':['篮球90分钟']}]
+            self.assertTrue(self.report())
+            self.assertFalse(self.report())
+        self.assertEqual(self.image.call_count, 2)
+
     def test_late_stage_details_supplement_once(self):
         self.cp = {'min': 407}
         self.comparison = {'stop_windows': [{'details_ready': True}]}

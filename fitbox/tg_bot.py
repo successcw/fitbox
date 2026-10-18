@@ -9,17 +9,17 @@ Every message becomes one line in 数据/fitbox/tg_inbox.jsonl:
      "kind": "voice"|"text"|"photo", "seconds": 12,
      "file": "数据/fitbox/tg_media/20261014-082200.oga", "text": "<转写原文/消息正文>"}
 
-This module deliberately stops at "transcribed and queued". Turning 口语 into 标准名
-(docs/deployment.md 中的记录流程) needs judgement, so it is done by a session, which then marks
-the item done:  python3 tg_bot.py pending    列出待整理
+Explicit completed exercise messages are recorded automatically. Other messages stay
+queued for a session to review and mark done:  python3 tg_bot.py pending    列出待整理
               python3 tg_bot.py done <update_id>   标记已记录
 An ack goes back to the phone immediately, so silence is never ambiguous.
 """
 import json, subprocess, sys, time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import notify
+import training_ingest
 
 from config import DATA_ROOT, PROJECT
 FIT = DATA_ROOT
@@ -36,7 +36,20 @@ def log(msg):
 
 
 def _ids(path):
-    return set(path.read_text().split()) if path.exists() else set()
+    ids = set()
+    for line in path.read_text().splitlines() if path.exists() else []:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            value = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(value, dict):
+            value = value.get('update_id')
+        if isinstance(value, (int, str)):
+            ids.add(str(value))
+    return ids
 
 
 def pending():
@@ -53,8 +66,37 @@ def pending():
 
 
 def mark_done(update_id):
-    with open(DONE, 'a') as f:
-        f.write(str(update_id) + '\n')
+    DONE.parent.mkdir(parents=True, exist_ok=True)
+    if str(update_id) not in _ids(DONE):
+        with open(DONE, 'a') as f:
+            f.write(str(update_id) + '\n')
+
+
+def process_record(record):
+    row = training_ingest.ingest(record)
+    if row is not None:
+        mark_done(record['update_id'])
+    return row
+
+
+def replay_pending():
+    """Recover queued exercise records after a restart; no Telegram messages are sent."""
+    recorded = []
+    for record in pending():
+        row = process_record(record)
+        if row is not None:
+            recorded.append(row)
+    return recorded
+
+
+def refresh_report(row):
+    """昨天的训练补记后检查日报；发送状态按训练内容去重。"""
+    if row and row['date'] == (datetime.now().date()-timedelta(days=1)).isoformat():
+        try:
+            import health_daily
+            health_daily.morning_report()
+        except Exception as exc:
+            log(f'report refresh failed: {exc}')
 
 
 def transcribe(path):
@@ -80,7 +122,7 @@ def handle(upd):
     if not chat or chat != str(notify.config()['chat']):        # only the owner's chat may inject
         log(f'ignored update {upd.get("update_id")} from chat {chat or "?"}')
         return None, None
-    ts = datetime.fromtimestamp(upd.get('message', {}).get('date') or time.time())
+    ts = datetime.fromtimestamp(msg.get('date') or time.time())
     rec = {'update_id': upd['update_id'], 'ts': ts.isoformat(timespec='seconds'),
            'date': f'{ts:%Y-%m-%d}', 'time': f'{ts:%H:%M}', 'text': '', 'file': None, 'seconds': None}
     MEDIA.mkdir(parents=True, exist_ok=True)
@@ -111,6 +153,10 @@ def handle(upd):
 
 def poll(once=False):
     """Long-poll getUpdates; persist the offset so a reconnect drains the backlog exactly once."""
+    SPOOL.mkdir(parents=True, exist_ok=True)
+    recovered = replay_pending()
+    for row in recovered:
+        refresh_report(row)
     offset = int(OFFSET.read_text().strip()) if OFFSET.exists() else 0
     while True:
         r = notify.api('getUpdates', {'offset': offset, 'timeout': 0 if once else 50, 'limit': 10,
@@ -133,8 +179,13 @@ def poll(once=False):
                 f.write(json.dumps(rec, ensure_ascii=False) + '\n')
             OFFSET.write_text(f'{offset}\n')                # queued first: never lose an item
             log(f"queued {rec['kind']} {rec['update_id']} {rec['date']} {rec['time']}")
+            row = process_record(rec)
+            if row is not None:
+                ack = f"✅ 已记 {row['date']} 训练：{'、'.join(row['done'])}"
             if ack:
                 notify.send(ack)
+            if row is not None:
+                refresh_report(row)
         if once:
             return
         time.sleep(1)

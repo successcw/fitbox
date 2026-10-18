@@ -154,3 +154,53 @@ def render_stages(result):
         duration_text = f'{r["matched_minutes"]:.2f} / {r["minutes"]:.2f}' if r['minutes'] < 5 else f'{r["matched_minutes"]:.0f} / {r["minutes"]:.0f}'
         rows+=f'<tr><td style="color:{COLORS[r["stage"]]}">{r["label"]}</td><td>{duration_text} 分</td><td>{rr}</td><td>{leak}</td></tr>'
     return chart+'<table style="width:100%;font-size:12px;text-align:left;border-spacing:0 7px"><thead style="color:#8aa0b8"><tr><th>手表阶段</th><th>匹配 / 阶段时长</th><th>呼吸频率中位数</th><th>漏气 P95</th></tr></thead><tbody>'+rows+'</tbody></table>'+f'<div style="font-size:13px">{escape(result.get("summary", ""))}</div><div class="note">手表估计分期；仅统计与呼吸机重叠时段。单位：次/分、L/min。匹配不足 80% 或不足 5 分钟显示 —；单晚差异不代表规律。</div>'
+
+
+def backfill_sleep_summaries(raw_root, daily):
+    """仅为缺少官方汇总的夜间生成已同步分段汇总；重复推送不重复累计。
+
+    使用本地中午分界归到睡醒日；不把未知阶段或冲突区间当作睡眠。
+    这是已同步样本的汇总，不保证导出窗口之外没有其他睡眠。
+    """
+    nights = {}
+    for path in sorted(Path(raw_root).glob('*.json')):
+        try:
+            payload = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        for metric in payload.get('data', {}).get('metrics', []):
+            if metric.get('name') != 'sleep_analysis':
+                continue
+            for row in metric.get('data') or []:
+                stage = STAGES.get(row.get('value'))
+                if not stage:
+                    continue
+                try:
+                    a = _time(row.get('startDate') or row.get('start'))
+                    b = _time(row.get('endDate') or row.get('end'))
+                except (ValueError, TypeError):
+                    continue
+                if not a or not b or b <= a:
+                    continue
+                day = (a + timedelta(hours=12)).date().isoformat()
+                if (b - timedelta(microseconds=1) + timedelta(hours=12)).date().isoformat() != day:
+                    continue  # 跨越治疗日中午边界的异常/超长记录不自动归夜。
+                nights.setdefault(day, {}).setdefault(stage, []).append((a,b))
+    for day, groups in nights.items():
+        current = daily.get(day, {}).get('sleep_analysis') or {}
+        if current.get('sleepStart') and current.get('totalSleep') is not None and current.get('origin') != 'segments':
+            continue
+        segments = sorted((a,b,k) for k,v in groups.items() for a,b in _union(v))
+        if any(c < b and d > a and other != k for i,(a,b,k) in enumerate(segments)
+               for c,d,other in segments[i+1:]):
+            continue
+        asleep = [(a,b) for a,b,k in segments if k != 'awake']
+        if not asleep:
+            continue
+        totals = {k:sum((b-a).total_seconds()/3600 for a,b,stage in segments if stage == k) for k in LABELS}
+        summary = {**totals, 'totalSleep':sum(totals[k] for k in ('deep','rem','core')),
+                   'sleepStart':min(a for a,b in asleep).isoformat(),
+                   'sleepEnd':max(b for a,b in asleep).isoformat(),
+                   'origin':'segments', 'scope':'已同步分段，未假定导出窗口外没有睡眠'}
+        daily.setdefault(day, {})['sleep_analysis'] = summary
+    return daily

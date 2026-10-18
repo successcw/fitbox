@@ -50,7 +50,7 @@ FITBOX_HEALTH_BIND='填写树莓派的 Tailscale IPv4 地址'
 FITBOX_HEALTH_TOKEN_FILE='/填写绝对主目录/fitbox/health.token'
 ```
 
-在该 token 文件中保存随机长密钥，文件权限为 `600`。不要把密钥写进模板或提交 Git。iPhone 与 Pi 必须加入你的 Tailscale 网络，Health Auto Export 使用 `http://树莓派的Tailscale地址:8787/`，请求头 `X-Fit-Token` 填同一密钥。仅绑定 Tailscale 地址，不向公网开放 8787 端口；Tailnet ACL 应限制可访问设备。保留每日汇总 JSON 自动化，另外建立一条只选 Sleep Analysis、关闭汇总的 JSON 自动化，保留分段起止时间。两条发送到同一地址。
+在该 token 文件中保存随机长密钥，文件权限为 `600`。不要把密钥写进模板或提交 Git。iPhone 与 Pi 必须加入你的 Tailscale 网络，Health Auto Export 使用 `http://树莓派的Tailscale地址:8787/`，请求头 `X-Fit-Token` 填同一密钥。仅绑定 Tailscale 地址，不向公网开放 8787 端口；Tailnet ACL 应限制可访问设备。配置三条 JSON 自动化：健康＝过去 7 天全部健康指标、开启汇总；睡眠＝今天全部健康指标、关闭汇总；锻炼＝过去 7 天锻炼记录。日报分别使用昨天健康、今天睡眠、昨天锻炼。昨天活动来自日汇总，无须补导活动明细。
 
 确认占位符均替换之后，在**树莓派**安装所需服务：
 
@@ -97,7 +97,7 @@ tail -n 50 "$HOME/.local/state/fitbox/watch.log"
 
 - Pi 手动采集结束后家庭网络恢复，EDF 严格校验通过；再次运行不会重复下载。
 - 正确 token 的 Health 推送得到成功响应，错误 token 被拒绝；原始 JSON 和索引均落盘。
-- Mac 能拉取 Pi 的增量数据，逐段睡眠与汇总互不覆盖。
+- Mac 能拉取 Pi 的增量数据，不汇总数据能生成睡眠统计和已同步活动合计，重传不重复计数。
 - 先查看本地报告，确认设备实测、手表估计和个人趋势的区别，再开启个人 Telegram 通知。
 - 次日验证 timer 执行日志和日报到达。首次安装成功不等于定时任务已验证。
 

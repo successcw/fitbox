@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Health Auto Export pushes → per-day store + one morning report.
 
-merge(file): fold daily summaries into 数据/健康/daily.json; keep detailed pushes in raw/.
+merge(file): rebuild daily values from raw samples; accept legacy daily summaries.
 morning_report(): once per day, as soon as last night's sleep is present, send a summary of the night,
 recovery signals vs the 7-day average, yesterday's activity and this morning's weight; also log it.
 The report is pushed through notify.py — this module knows nothing about the channel.
@@ -30,23 +30,9 @@ def load():
 
 
 def is_detailed_metrics(metrics):
-    """A raw export is a separate feed, never a replacement for daily totals.
-
-    Auto Export sends both feeds to the same endpoint. Raw sleep uses localized
-    stage names; raw numeric samples may omit start/end but repeat a day.
-    The original JSON remains in raw/ for timestamp-aligned analysis.
-    """
-    for metric in metrics:
-        days = set()
-        for row in metric.get('data') or []:
-            if ('startDate' in row and 'endDate' in row) or ('start' in row and 'end' in row):
-                return True
-            stamp = row.get('date', '')
-            day = stamp[:10]
-            if day in days:
-                return True
-            days.add(day)
-    return False
+    """识别逐条样本，供旧调用方使用。"""
+    from health_samples import is_raw_metric
+    return any(is_raw_metric(m) for m in metrics)
 
 
 def merge(path):
@@ -54,9 +40,11 @@ def merge(path):
     with open(path) as f:
         payload = json.load(f).get('data', {})
     metrics = payload.get('metrics') or []
-    if is_detailed_metrics(metrics):
-        metrics = []  # Keep the separate daily-summary feed authoritative.
+    from health_samples import is_raw_metric, normalize_value
+    raw_feed = is_detailed_metrics(metrics)
     for m in metrics:
+        if is_raw_metric(m) or (raw_feed and m['name'] != 'sleep_analysis'):
+            continue  # 明细统一从归档去重重建，不能逐条覆盖日值。
         for row in m.get('data') or []:
             day = row['date'][:10]
             if m['name'] == 'sleep_analysis':
@@ -65,16 +53,23 @@ def merge(path):
                 val = {k: row.get(k) for k in ('Min', 'Avg', 'Max')}
             else:
                 val = row.get('qty')
-            cur = daily.setdefault(day, {}).get(m['name'])
-            if m['name'] in ADDITIVE and isinstance(cur, (int, float)) and isinstance(val, (int, float)):
-                val = max(cur, val)     # a 'since last sync' push carries only the increment; never shrink a day total
+            if m['name'] != 'sleep_analysis':
+                val = normalize_value(m['name'], m.get('units'), val)
+                if val is None:
+                    continue
+            daily.setdefault(day, {})
             daily[day][m['name']] = val
+            daily[day].get('_sample_metrics', {}).pop(m['name'], None)
     for w in payload.get('workouts') or []:
         e = w.get('activeEnergyBurned') or {}
         kcal = e.get('qty', 0) / (4.184 if e.get('units') == 'kJ' else 1)
         daily.setdefault(w['start'][:10], {}).setdefault('workouts', {})[w.get('id') or w['start']] = {
             'name': w.get('name'), 'start': w['start'][11:16], 'end': w['end'][11:16],
             'min': round(w.get('duration', 0) / 60), 'kcal': round(kcal), 'avg_hr': round((w.get('avgHeartRate') or {}).get('qty') or 0)}
+    from sleep_stages import backfill_sleep_summaries
+    backfill_sleep_summaries(STORE.parent / 'raw', daily)
+    from health_samples import backfill_sample_metrics
+    backfill_sample_metrics(STORE.parent / 'raw', daily, [path])
     STORE.parent.mkdir(parents=True, exist_ok=True)
     with STORE.open('w') as f:
         json.dump(dict(sorted(daily.items())), f, ensure_ascii=False, indent=1)
@@ -297,16 +292,19 @@ def build(daily, today):
     tot, avg_tot = s.get('totalSleep', 0), avg7(daily, today, 'sleep_analysis', 'totalSleep')
     rhr, hrv = d.get('resting_heart_rate'), d.get('heart_rate_variability')
     a_rhr, a_hrv = avg7(daily, today, 'resting_heart_rate'), avg7(daily, today, 'heart_rate_variability')
-    act_kcal = (y.get('active_energy') or 0) / 4.184
-    bas_kcal = (y.get('basal_energy_burned') or 0) / 4.184
+    act_kcal = y['active_energy'] / 4.184 if y.get('active_energy') is not None else None
+    bas_kcal = y['basal_energy_burned'] / 4.184 if y.get('basal_energy_burned') is not None else None
     workouts = list((y.get('workouts') or {}).values())
     train = training(rows, yd)
     meals, bad = food(rows, yd)
     tr = trend(rows, today)
     w = todays_weight(today)
     cp = cpap_night(yd)
-    ex = {'act': act_kcal, 'bas': bas_kcal, 'total': act_kcal + bas_kcal, 'ex_min': y.get('apple_exercise_time'),
+    ex = {'act': act_kcal, 'bas': bas_kcal, 'total': act_kcal + bas_kcal if act_kcal is not None and bas_kcal is not None else None, 'ex_min': y.get('apple_exercise_time'),
           'steps': y.get('step_count'), 'workouts': workouts, 'train': train, 'meals': meals, 'bad': bad, 'trend': tr, 'cpap': cp}
+    ex['activity_partial'] = any(k in y.get('_sample_metrics', {}) for k in ADDITIVE)
+    ex['energy_label'] = '已同步消耗' if ex['activity_partial'] else '总消耗'
+    ex['energy_text'] = f"{ex['total']:.0f} 千卡" if ex['total'] is not None else '未同步完整'
     ex['cpap_brief'] = cpap_brief(cp)
     # 时间交集只代表睡眠窗口覆盖，不把手表分期估计当作诊断。
     from sleep_analysis import analyze
@@ -319,8 +317,8 @@ def build(daily, today):
         (ex['sleep_comparison'].get('latest') or {}).get('sessions', []))
     # one-line summary: 练 · 吃 · 趋势
     parts = []
-    if ex['total']:
-        parts.append(f"昨天消耗约 {ex['total']:.0f} 千卡" + (f"、锻炼 {ex['ex_min']:.0f} 分钟" if ex['ex_min'] else ''))
+    if ex['total'] is not None:
+        parts.append(f"昨天{ex['energy_label']}约 {ex['total']:.0f} 千卡" + (f"、锻炼 {ex['ex_min']:.0f} 分钟" if ex['ex_min'] else ''))
     parts.append(('饮食出现 ' + '、'.join(bad)) if bad else ('饮食守住了规则' if meals else '饮食没记录'))
     if tr['status'] != 'unknown':
         r = tr['fat_wk'] if tr['fat_wk'] is not None else tr['weight_wk']
@@ -333,6 +331,8 @@ def build(daily, today):
     if hrv and a_hrv and hrv <= a_hrv * 0.8: flags.append('HRV 偏低')
     if flags:
         verdict = '、'.join(flags) + '，今天训练减量、早点睡'
+    elif any(v is None for v in (rhr, hrv, a_rhr, a_hrv)):
+        verdict = '恢复指标或基线未齐，暂不判断恢复状态'
     elif tr['status'] in ('slow', 'off'):
         verdict = '恢复正常；减脂偏慢，今天晚饭主食减半、多走 3000 步'
     else:
@@ -345,7 +345,7 @@ def build(daily, today):
     if ex['stage_comparison'].get('summary'):
         lines.append('   分期对照：' + ex['stage_comparison']['summary'])
     if rhr: lines.append(f"   静息心率 {rhr:.0f}" + (f"（均 {a_rhr:.0f}）" if a_rhr else '') + (f"，HRV {hrv:.0f}" if hrv else ''))
-    lines.append(f"🏋️ 练：总消耗 {ex['total']:.0f} 千卡（活动 {act_kcal:.0f} + 基础 {bas_kcal:.0f}）" + (f"，步数 {ex['steps']:.0f}" if ex['steps'] else ''))
+    lines.append(f"🏋️ 练：{ex['energy_label']} {ex['energy_text']}" + (f"，步数 {ex['steps']:.0f}" if ex['steps'] is not None else '，步数未同步'))
     for wo in workouts: lines.append(f"   {wo['start']} {wo['name']} {wo['min']} 分钟 · {wo['kcal']} 千卡")
     if train: lines.append('   ' + '、'.join(train))
     lines.append('🍚 吃：' + ('；'.join(f"{t} {f[:30]}" for t, f in meals) if meals else '昨天没记录，吃饭时拍照发我'))
@@ -377,11 +377,13 @@ def _morning_report(today, force, wait_cpap, deadline):
         state = {}
     previous = state.get(str(today))
     updating = not force and (str(today) in done or previous is not None)
+    training_changed = False
     if updating:
         # 旧标记无法判断详析是否已发，保守不补发；新标记只允许补齐一次。
         if not isinstance(previous, dict):
             return False
-        if previous.get('cpap') is not False and previous.get('details_ready') is not False and previous.get('stages_ready') is not False:
+        training_changed = ('training' in previous and previous['training'] != training(log_rows(), today-timedelta(days=1)))
+        if previous.get('cpap') is not False and previous.get('details_ready') is not False and previous.get('stages_ready') is not False and not training_changed:
             return False
     daily = load()
     if 'sleep_analysis' not in daily.get(str(today), {}):
@@ -394,11 +396,11 @@ def _morning_report(today, force, wait_cpap, deadline):
         details_ready = details_ready and isinstance(windows, list) and bool(windows) and all(
             isinstance(window, dict) and window.get('details_ready', window.get('status') == 'complete') for window in windows)
     stages_ready = ex.get('stage_comparison', {}).get('ready', 'stage_comparison' not in ex)
-    if updating and previous.get('details_ready') is True and previous.get('cpap') is True and not stages_ready:
+    if updating and previous.get('details_ready') is True and previous.get('cpap') is True and not stages_ready and not training_changed:
         return False  # 分期明细迟到时只在完整对照就绪后补发一次。
-    if updating and not details_ready:
+    if updating and not details_ready and not training_changed:
         return False                            # 只为完整详析补发，不逐批追发未齐的文件
-    if (not force and wait_cpap and today == date.today() and not (details_ready and stages_ready)
+    if (not force and not training_changed and wait_cpap and today == date.today() and not details_ready
             and datetime.now().strftime('%H:%M') < deadline):
         return False
     caption = text.split('\n')[0][2:] + '\n👉 ' + verdict
@@ -415,7 +417,7 @@ def _morning_report(today, force, wait_cpap, deadline):
         sent = notify.send(text)                # the text always carries the whole report
     if not sent:
         return False                            # 未送达不记已发，下次事件/定时检查可重试
-    state[str(today)] = {'cpap': bool(ex.get('cpap')), 'details_ready': details_ready, 'stages_ready': stages_ready, 'channel': channel, 'sent_at': datetime.now().isoformat(timespec='seconds')}
+    state[str(today)] = {'cpap': bool(ex.get('cpap')), 'details_ready': details_ready, 'stages_ready': stages_ready, 'training': ex.get('train', []), 'channel': channel, 'sent_at': datetime.now().isoformat(timespec='seconds')}
     DONE.parent.mkdir(parents=True, exist_ok=True)
     temp = state_path.with_suffix('.json.tmp')
     temp.write_text(json.dumps(state, ensure_ascii=False, indent=2))
