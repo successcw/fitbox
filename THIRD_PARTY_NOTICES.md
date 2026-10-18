@@ -10,5 +10,5 @@ Python packages are installed as dependencies, not vendored. See each package's 
 license. ResMed, ezShare, Apple, Health Auto Export and Telegram are third-party names;
 this project is independent and is not endorsed by those vendors.
 
-The license for this project's original code is pending the repository owner's choice.
-The upstream MIT notice does not itself license all files in this repository.
+This project's original code is released under the MIT License; see [LICENSE](LICENSE).
+The upstream MIT notice above remains in effect for the incorporated formulas.
