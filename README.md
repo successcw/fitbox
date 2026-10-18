@@ -20,37 +20,21 @@
 
 ## 系统架构
 
-```mermaid
-flowchart LR
-    CPAP["呼吸机中的 ezShare SD 卡"] -->|"Wi-Fi / HTTP · EDF"| COLLECT["树莓派：呼吸机采集"]
-    SCALE["蓝牙体脂秤"] -->|BLE| BLE["树莓派：称重监听"]
-    WATCH["Apple Watch"] --> HEALTH["iPhone · Apple Health"]
-    HEALTH --> HAE["Health Auto Export"]
-    HAE -->|"Tailscale · REST JSON + Token"| API["树莓派：健康数据接收"]
-    COLLECT --> STORE["树莓派本地文件 + 事件索引"]
-    BLE --> STORE
-    API --> STORE
-    STORE -->|"Mac 主动连接 SSH / SCP"| MAC["Mac：同步、去重、完整性检查"]
-    MAC --> ANALYSIS["日汇总与睡眠分期对齐"]
-    ANALYSIS --> REPORT["HTML / PNG / PDF 日报"]
-    REPORT -->|"Telegram Bot API"| TG["用户的 Telegram"]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/architecture-dark.png">
+  <img alt="系统架构：呼吸机、手表和体脂秤的数据经树莓派采集，Mac 同步并分析，日报通过 Telegram 发送" src="docs/diagrams/architecture-light.png">
+</picture>
+
+<sub>图由 [`scripts/render_diagrams.py`](scripts/render_diagrams.py) 生成；GitHub 会按明暗主题选择对应版本。</sub>
 
 ## 硬件连接图
 
-```mermaid
-flowchart TB
-    subgraph BED["床边"]
-        PAP["ResMed 呼吸机"] ---|"SD 卡槽供电与写入"| SD["ezShare Wi-Fi SD 卡"]
-        SD -.->|"卡自身的 Wi-Fi 热点"| PI["树莓派 · Wi-Fi + BLE"]
-        BATH["受支持的体脂秤"] -.->|"蓝牙 BLE"| PI
-    end
-    ROUTER["家庭路由器"] -.->|"平时连接家庭 Wi-Fi"| PI
-    ROUTER ---|"可选：以太网，单独保留上行链路"| PI
-    ROUTER --- MAC["Mac · 常驻同步与日报"]
-    PHONE["iPhone + Apple Watch"] -.->|"Tailscale 私有网络"| PI
-    MAC -.->|"家庭局域网或 Tailscale"| PI
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/hardware-dark.png">
+  <img alt="硬件连接图：ResMed 呼吸机内的 ezShare SD 卡通过 Wi-Fi 连接树莓派，体脂秤通过 BLE 连接树莓派，iPhone 与 Mac 通过家庭网络或 Tailscale 访问树莓派" src="docs/diagrams/hardware-light.png">
+</picture>
+
+<sub>卡始终插在呼吸机内，树莓派不通过 USB 读卡；图中虚线表示无线或可选链路。</sub>
 
 SD 卡始终插在呼吸机内，**没有 USB 读卡器到树莓派的连接**。只有一块 Wi-Fi 网卡时，树莓派访问卡热点会暂时离开家庭 Wi-Fi，SSH / Tailscale 因此可能中断。采集程序和独立恢复任务负责切回家庭网络。接入以太网可保留独立上行链路，但仍需正确配置路由。
 
