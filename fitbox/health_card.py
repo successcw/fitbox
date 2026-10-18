@@ -4,7 +4,8 @@
 render(daily, today) → (png_path, pdf_path). Watch sleep stages are consumer-grade estimates,
 shown as such rather than graded against fixed clinical thresholds.
 """
-import json, os, re, subprocess
+import json, os, re, shutil, subprocess, tempfile
+from pathlib import Path
 from html import escape
 from datetime import date, timedelta
 from pull import FIT
@@ -261,38 +262,44 @@ body{{width:760px;max-width:880px;margin:0 auto;background:#0b1522;color:#e6edf5
 
 
 def render(daily, today, verdict, flags, weight, ex):
-    """按实际内容高度渲染，防止新增睡眠图被固定视口截断。"""
+    """按实际内容高度渲染；使用独立 Chrome 配置目录，避免与正在运行的浏览器争用配置。"""
     OUT.mkdir(parents=True, exist_ok=True)
     base = OUT / f'{today}'
     document = html(daily, today, verdict, flags, weight, ex)
     (OUT / f'{today}.sleep.json').write_text(json.dumps({**ex.get('sleep_comparison', {}), 'stage_comparison': ex.get('stage_comparison', {})}, ensure_ascii=False, indent=2, allow_nan=False))
     measure = "<script>document.body.setAttribute('data-report-height',document.documentElement.scrollHeight)</script>"
     page = f'{base}.html'
-    open(page, 'w').write(document.replace('</body>', measure + '</body>'))
-    common = [CHROME, '--headless=new', '--hide-scrollbars', '--no-pdf-header-footer']
-    measured = subprocess.run(common + ['--dump-dom', '--window-size=760,900', f'file://{page}'],
-                              capture_output=True, text=True, timeout=60, check=True)
-    match = re.search(r'data-report-height="(\d+)"', measured.stdout)
-    if not match:
-        raise RuntimeError('无法测量日报高度，保留文字发送回退')
-    css_h = int(match.group(1)) + 10
-    png, pdf = f'{base}.png', f'{base}.pdf'
-    subprocess.run(common + [f'--screenshot={png}', f'--window-size=760,{css_h}',
-                            '--force-device-scale-factor=2', f'file://{page}'],
-                   capture_output=True, timeout=60, check=True)
-    from PIL import Image
-    with Image.open(png) as source:
-        im = source.convert('RGB')
-    # Telegram sendPhoto 对宽高总和有限制；保持比例，不截去内容。
-    if sum(im.size) > 9900:
-        scale = 9900 / sum(im.size)
-        im = im.resize((int(im.width * scale), int(im.height * scale)), Image.Resampling.LANCZOS)
-    im.save(png)
-    tmp = f'{base}.pdf.html'
-    open(tmp, 'w').write(document.replace('</style>', f'@page{{size:760px {css_h}px;margin:0}}</style>'))
+    Path(page).write_text(document.replace('</body>', measure + '</body>'))
+    profile = tempfile.mkdtemp(prefix='fitbox-chrome-')
+    common = [CHROME, '--headless=new', '--hide-scrollbars', '--no-pdf-header-footer',
+              f'--user-data-dir={profile}', '--no-first-run', '--no-default-browser-check',
+              '--disable-extensions', '--disable-background-networking']
     try:
-        subprocess.run(common + [f'--print-to-pdf={pdf}', f'file://{tmp}'],
+        measured = subprocess.run(common + ['--dump-dom', '--window-size=760,900', f'file://{page}'],
+                                  capture_output=True, text=True, timeout=60, check=True)
+        match = re.search(r'data-report-height="(\d+)"', measured.stdout)
+        if not match:
+            raise RuntimeError('无法测量日报高度，保留文字发送回退')
+        css_h = int(match.group(1)) + 10
+        png, pdf = f'{base}.png', f'{base}.pdf'
+        subprocess.run(common + [f'--screenshot={png}', f'--window-size=760,{css_h}',
+                                '--force-device-scale-factor=2', f'file://{page}'],
                        capture_output=True, timeout=60, check=True)
+        from PIL import Image
+        with Image.open(png) as source:
+            im = source.convert('RGB')
+        # Telegram sendPhoto 对宽高总和有限制；保持比例，不截去内容。
+        if sum(im.size) > 9900:
+            scale = 9900 / sum(im.size)
+            im = im.resize((int(im.width * scale), int(im.height * scale)), Image.Resampling.LANCZOS)
+        im.save(png)
+        tmp = f'{base}.pdf.html'
+        Path(tmp).write_text(document.replace('</style>', f'@page{{size:760px {css_h}px;margin:0}}</style>'))
+        try:
+            subprocess.run(common + [f'--print-to-pdf={pdf}', f'file://{tmp}'],
+                           capture_output=True, timeout=60, check=True)
+        finally:
+            os.remove(tmp)
+        return png, pdf
     finally:
-        os.remove(tmp)
-    return png, pdf
+        shutil.rmtree(profile, ignore_errors=True)
