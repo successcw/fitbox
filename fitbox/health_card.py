@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Render the morning report as a phone-sized card (HTML → PNG/PDF) in the weekly-report dark palette.
 
-render(daily, today) → (png_path, pdf_path). Stage reference ranges are typical adult values; watch
-staging is an estimate, so the card explains each stage rather than grading it harshly.
+render(daily, today) → (png_path, pdf_path). Watch sleep stages are consumer-grade estimates,
+shown as such rather than graded against fixed clinical thresholds.
 """
 import json, os, re, subprocess
 from html import escape
@@ -99,7 +99,7 @@ def vs(val, avg, better_low, fmt='{:.0f}'):
     return f'{"+" if d > 0 else "−"}{fmt.format(abs(d))}', 'g' if good else 'y'
 
 
-def weight_svg(points, goal=WEIGHT_GOAL):
+def weight_svg(points):
     """near-2-week morning weights with a least-squares line"""
     if len(points) < 2:
         return '<div class="note">体重数据还不够画趋势</div>'

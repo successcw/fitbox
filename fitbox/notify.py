@@ -31,13 +31,7 @@ def config():
     """{token, chat} — file first, environment as fallback. Cached per process."""
     global _cfg
     if _cfg is None:
-        cfg = {}
-        if ENV.exists():
-            for line in ENV.read_text().splitlines():
-                line = line.strip()
-                if line and not line.startswith('#') and '=' in line:
-                    k, v = line.split('=', 1)
-                    cfg[k.strip()] = v.strip()
+        # config.py loads CONFIG_FILE into os.environ before this module is used.
         _cfg = {'token': os.environ.get('TELEGRAM_BOT_TOKEN', ''),
                 'chat': os.environ.get('TELEGRAM_CHAT_ID', '')}
     return _cfg

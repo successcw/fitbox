@@ -11,7 +11,7 @@
 | 树莓派 | `health_receiver.py` | 校验请求 Token，原样保存 Health Auto Export JSON，追加事件索引 |
 | 树莓派 | systemd timer、网络恢复脚本 | 定时采集、成功后跳过、掉线后的网络恢复 |
 | Mac | `watch.py`、`pull.py` | 主动通过 SSH 追踪索引，经 SCP 拉取文件，校验后落盘与去重 |
-| Mac | `health_daily.py` | 合并汇总指标，选择报告日期，管理发送与补发状态 |
+| Mac | `health_daily.py` | 合并日汇总与明细、回填睡眠和采样、选择报告日期、管理发送与补发状态 |
 | Mac | `sleep_analysis.py`、`sleep_waveform.py`、`sleep_stages.py` | 解析治疗时段、波形与事件，按手表阶段进行时间对齐 |
 | Mac | `health_card.py`、`notify.py` | 生成日报，通过 Telegram 发送 |
 
