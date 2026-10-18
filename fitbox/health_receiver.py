@@ -5,6 +5,7 @@ The bind address and firewall are deployment responsibilities: default to loopba
 only on a private network such as Tailscale. Every request must carry the shared token in the
 X-Fit-Token header. Each push is saved verbatim; an index line is appended to
 ~/fitdata/health.jsonl so the Mac watcher can pick it up the same way it does weigh-ins.
+GET /health returns ok only when the token is valid, so deployment checks do not write data.
 """
 import hmac, json, logging, os
 from datetime import datetime
@@ -30,6 +31,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path != '/health':
+            return self._reply(404, 'not found')
+        if not hmac.compare_digest(self.headers.get('X-Fit-Token', ''), TOKEN):
+            return self._reply(403, 'forbidden')
+        self._reply(200, 'ok')
 
     def do_POST(self):
         if not hmac.compare_digest(self.headers.get('X-Fit-Token', ''), TOKEN):

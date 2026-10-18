@@ -18,6 +18,20 @@
 
 ![合成数据日报](examples/demo-report.png)
 
+## 让 AI 代理部署
+
+仓库根目录的 [AGENTS.md](AGENTS.md) 是写给 AI agent 的部署契约：分阶段命令、验证门、故障决策树和禁止事项。把下面这段和仓库地址一起发给你的 AI：
+
+> 请阅读 https://github.com/successcw/fitbox/blob/main/AGENTS.md，按阶段为我部署 fitbox。先只做信息收集和只读预检，把需要我提供的内容列出来；我确认后再继续。不要向我索要 token 明文，不要修改呼吸机治疗参数，不要格式化 SD 卡，不要把 8787 端口暴露到公网，也不要在未验证时声称部署成功。
+
+AI 可以完成代码安装、配置检查、服务部署和验证；但硬件接线、iPhone 上的 Health Auto Export、Telegram/Tailscale 账号和 sudo 授权必须由你完成。缺少这些条件时，它应当停下并说明缺什么，而不是猜一个结果。
+
+也可以先手动跑一次只读预检：
+
+```bash
+python3 scripts/preflight.py --role auto
+```
+
 ## 系统架构
 
 <picture>
@@ -104,12 +118,13 @@ iPhone 后台调度会影响实际送达时间。[官方自动化说明](https:/
 ## 目录
 
 ```text
+AGENTS.md                     给 AI agent 的部署手册
 fitbox/                       采集、同步、分析、渲染及测试
 skills/ezshare-cpap-read/      旧固件 ezShare 读取经验与协议说明
 deploy/                       树莓派 systemd 与 Mac 常驻任务模板
-docs/                         架构与部署说明
+docs/                         架构、部署说明与生成的图表（docs/diagrams/）
 examples/                     合成数据与日报演示
-scripts/                      本地初始化工具
+scripts/                      本地初始化、预检与图表渲染工具
 ```
 
 验证代码：
