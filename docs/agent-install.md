@@ -7,7 +7,7 @@
 把下面这段和仓库地址一起发给你的 AI：
 
 ```text
-请阅读 https://github.com/successcw/fitbox/blob/main/AGENTS.md
+请阅读 https://github.com/successcw/fitbox/blob/main/docs/agent-install.md
 按阶段为我部署 fitbox。
 先只做信息收集和只读预检，把需要我提供的内容列出来；我确认后再继续。
 不要向我索要 token 明文，不要修改呼吸机治疗参数，不要格式化 SD 卡，
